@@ -7,12 +7,15 @@ const standardTheme = document.querySelector('.standard-theme');
 const lightTheme = document.querySelector('.light-theme');
 const darkerTheme = document.querySelector('.darker-theme');
 
+// mongo API url
+const mongoAPIUrl = "https://node-api-list.vercel.app/api/todo";
 
 // Event Listeners
 
 toDoBtn.addEventListener('click', addToDo);
 toDoList.addEventListener('click', deletecheck);
-document.addEventListener("DOMContentLoaded", getTodos);
+// document.addEventListener("DOMContentLoaded", getTodos); // get local data
+document.addEventListener("DOMContentLoaded", getMongoTodos); // get from mongo db
 standardTheme.addEventListener('click', () => changeTheme('standard'));
 lightTheme.addEventListener('click', () => changeTheme('light'));
 darkerTheme.addEventListener('click', () => changeTheme('darker'));
@@ -39,12 +42,15 @@ function addToDo(event) {
         } 
     else {
         // newToDo.innerText = "hey";
-        newToDo.innerText = toDoInput.value;
+        newToDo.innerText = toDoInput.value+' @'+new Date().toLocaleString();
         newToDo.classList.add('todo-item');
         toDoDiv.appendChild(newToDo);
 
         // Adding to local storage;
-        savelocal(toDoInput.value);
+        // savelocal(toDoInput.value);
+
+        //Adding to mongo db
+        saveToMongo(toDoInput.value);
 
         // check btn;
         const checked = document.createElement('button');
@@ -78,7 +84,7 @@ function deletecheck(event){
         // item.parentElement.remove();
         // animation
         item.parentElement.classList.add("fall");
-
+        removeTodosFromDB(item.value);
         //removing local todos;
         removeLocalTodos(item.parentElement);
 
@@ -90,10 +96,38 @@ function deletecheck(event){
     // check
     if(item.classList[0] === 'check-btn')
     {
+        updateTodoItem(item.value, item.parentElement.classList.value.includes('completed') ? false : true);
         item.parentElement.classList.toggle("completed");
     }
 
 
+}
+
+function removeTodosFromDB(id)
+{
+    fetch(mongoAPIUrl+'/'+id, { method: 'DELETE'})
+        .then(response => {
+            if(!response.ok) {
+                throw new Error('Error from API end.')
+            }
+        })
+}
+
+function updateTodoItem(_id, item_done)
+{
+    const requestOptions = {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({_id, item_done}),
+      };
+    fetch(mongoAPIUrl+'/'+_id, requestOptions)
+        .then(response => {
+            if(!response.ok) {
+                throw new Error('Error from API end.')
+            }
+        })
 }
 
 
@@ -112,6 +146,23 @@ function savelocal(todo){
     localStorage.setItem('todos', JSON.stringify(todos));
 }
 
+function saveToMongo(todo)
+{
+    const requestOptions = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({desc: todo, date: new Date()}),
+      };
+    fetch(mongoAPIUrl, requestOptions)
+        .then(response => {
+            if(!response.ok) {
+                throw new Error('Error from API end.')
+            }
+        })
+    // getMongoTodos(); 
+}
 
 
 function getTodos() {
@@ -149,6 +200,66 @@ function getTodos() {
 
         // Append to list;
         toDoList.appendChild(toDoDiv);
+    });
+}
+
+function getMongoTodos()
+{
+    fetch(mongoAPIUrl, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+        }})
+    .then(response => {
+        console.log('response => ', response);
+        if (!response.ok) {
+            if (response.status === 404) {
+              throw new Error('Data not found');
+            } else if (response.status === 500) {
+              throw new Error('Server error');
+            } else {
+              throw new Error('Network response was not ok');
+            }
+        }
+        console.log('API issue');
+        return response.json();
+    })
+    .then((todos) => {
+        console.log('todos => ', todos);
+        if(todos.list.length > 0) {
+            todos.list.forEach(function(todo) {
+                console.log('todo ==> ', todo);
+                // toDo DIV;
+                const toDoDiv = document.createElement("div");
+                let completedItem = todo?.item_done ? 'completed' : '-';
+                toDoDiv.classList.add("todo", `${savedTheme}-todo`, completedItem);
+        
+                // Create LI
+                const newToDo = document.createElement('li');
+                
+                newToDo.innerText = todo.desc+ ' @'+new Date(todo.date).toLocaleString();
+                newToDo.classList.add('todo-item');
+                toDoDiv.appendChild(newToDo);
+        
+                // check btn;
+                const checked = document.createElement('button');
+                checked.innerHTML = '<i class="fas fa-check"></i>';
+                checked.classList.add("check-btn", `${savedTheme}-button`);
+                checked.value = todo._id;
+                toDoDiv.appendChild(checked);
+                // delete btn;
+                const deleted = document.createElement('button');
+                deleted.innerHTML = '<i class="fas fa-trash"></i>';
+                deleted.classList.add("delete-btn", `${savedTheme}-button`);
+                deleted.value = todo._id;
+                toDoDiv.appendChild(deleted);
+        
+                // Append to list;
+                toDoList.appendChild(toDoDiv);
+            });
+        }
+    })
+    .catch(error => {
+        console.log('Error:', error);
     });
 }
 
